@@ -65,7 +65,7 @@ def main():
     columns = scania_train.columns.values
     scania_train.insert(0, 'class', labels_train)
 
-    producer = KafkaProducer(bootstrap_servers=[' 93.70.67.16:9092', ' 93.70.67.16:9093'])
+    producer = KafkaProducer(bootstrap_servers=['localhost:9092', 'localhost:9093'])
 
     # invio il modello al fog
     serialized = pickle.dumps(nb_model)
@@ -78,7 +78,7 @@ def main():
 
     consumer = KafkaConsumer('fog-cloud',
                              group_id='model_update',
-                             bootstrap_servers=[' 93.70.67.16:9092', ' 93.70.67.16:9093'])
+                             bootstrap_servers=['localhost:9092', 'localhost:9093'])
 
     print("In attesa del modello dal fog..")
     # ricevo il modello dal fog
