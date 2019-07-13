@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
 from sklearn.feature_selection import SelectKBest, chi2
 from kafka import KafkaProducer, KafkaConsumer
 import pickle
@@ -50,7 +51,7 @@ def main():
     features_test = pd.DataFrame(features_test).take(indices, axis='columns')
 
     # costruisco il modello iniziale
-    nb_model = DecisionTreeClassifier()
+    nb_model = GaussianNB()
     nb_model.fit(features_train, labels_train)
 
     # calcolo l'accuratezza
@@ -69,10 +70,12 @@ def main():
 
     # invio il modello al fog
     serialized = pickle.dumps(nb_model)
-    producer.send('cloud-fog', key=b"model", value=serialized)
+    producer.send('cloud-fog', key=b"model", value=serialized, partition=0)
+    producer.send('cloud-fog', key=b"model", value=serialized, partition=1)
 
     serialized = pickle.dumps(columns)
-    producer.send('cloud-fog', key=b"indices", value=serialized)
+    producer.send('cloud-fog', key=b"indices", value=serialized, partition=0)
+    producer.send('cloud-fog', key=b"indices", value=serialized, partition=1)
     print("Modello inziale e colonne inviati al fog")
     producer.flush()
 
@@ -88,8 +91,7 @@ def main():
             # deserializzo e estraggo il valore
             model = pickle.loads(message.value)
             t = datetime.datetime.now()
-            size = sys.getsizeof(model)
-            print(BColors.OKBLUE + str(t) + " - Modello ricevuto dal fog, peso " + str(size) + " bytes" + BColors.ENDC)
+            print(BColors.OKBLUE + str(t) + " - Modello ricevuto dal fog, peso " + BColors.ENDC)
 
             # calcolo l'accuratezza
             out = model.predict(features_test)
@@ -118,11 +120,13 @@ def main():
                         serialized = pickle.dumps(model)
                         t = datetime.datetime.now()
                         print(BColors.OKGREEN + str(t) + " - Update modello" + BColors.ENDC)
-                        producer.send('cloud-fog', key=b"model", value=serialized)
+                        producer.send('cloud-fog', key=b"model", value=serialized, partition=0)
+                        producer.send('cloud-fog', key=b"model", value=serialized, partition=1)
                         print("Modello inviato al fog..\n")
 
                         serialized = new_train.to_numpy().tobytes()
-                        producer.send('cloud-fog', key=b"train", value=serialized)
+                        producer.send('cloud-fog', key=b"train", value=serialized, partition=0)
+                        producer.send('cloud-fog', key=b"train", value=serialized, partition=1)
                         print("Istanze di train inviate al fog\n")
                         producer.flush()
 

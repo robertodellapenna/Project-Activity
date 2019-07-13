@@ -7,6 +7,7 @@ import sys
 import datetime
 from kafka import KafkaConsumer, KafkaProducer, TopicPartition
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import accuracy_score, recall_score
 
 sp = Semaphore()
@@ -33,9 +34,9 @@ class BColors:
 def update_model_remote():
     global model, train_set, fixed, model_version
 
-    consumer = KafkaConsumer('cloud-fog',
-                             group_id='model_update1',
-                             bootstrap_servers=['localhost:9093'])
+    consumer = KafkaConsumer(group_id='model_update0',
+                             bootstrap_servers=['localhost:9092'])
+    consumer.assign([TopicPartition('cloud-fog', 1)])
 
     # leggo il modello ed i dati di train dal Cloud
     print("In attesa del modello dal Cloud..")
@@ -46,9 +47,8 @@ def update_model_remote():
             if key == "model":
                 # deserializzo e estraggo il valore
                 tmp_model = pickle.loads(message.value)
-                size = sys.getsizeof(tmp_model)
                 t = datetime.datetime.now()
-                print(BColors.OKGREEN + str(t) + " - Modello ricevuto, versione " + str(model_version) + ", peso " + str(size) + "bytes" + BColors.ENDC)
+                print(BColors.OKGREEN + str(t) + " - Modello ricevuto, versione " + str(model_version) + BColors.ENDC)
                 model_version = model_version + 1
 
                 message = next(consumer)
@@ -140,14 +140,14 @@ def update_model_local():
                 features_train_new = train_set.drop('class', axis=1)
                 labels_train_new = train_set['class']
 
-                new_model = DecisionTreeClassifier()
+                new_model = GaussianNB()
                 new_model.fit(features_train_new, labels_train_new)
 
                 producer = KafkaProducer(bootstrap_servers=['localhost:9093'])
 
                 # invio il modello
                 serialized = pickle.dumps(new_model)
-                size = sys.getsizeof(new_model)
+                size = sys.getsizeof(serialized)
                 producer.send('fog-cloud', key=b"model", value=serialized, partition=1)
 
                 t = datetime.datetime.now()
@@ -195,10 +195,9 @@ def setup():
 def main():
     global model, columns, model_version
     # leggo il modello iniziale e il subset di attributi dal nodo cloud
-    consumer = KafkaConsumer('cloud-fog',
-                             group_id='model_update1',
-                             bootstrap_servers=['localhost:9093'],
+    consumer = KafkaConsumer(bootstrap_servers=['localhost:9093'],
                              value_deserializer=lambda x: pickle.loads(x))
+    consumer.assign([TopicPartition('cloud-fog', 1)])
 
     print("In attesa del modello iniziale dal Cloud..")
     message = next(consumer)
